@@ -5,13 +5,14 @@ import type { Route } from '@/types';
 import ofetch from '@/utils/ofetch';
 
 const baseUrl = 'https://www.vlance.vn';
-const listUrl = `${baseUrl}/block/job_list/cpath_cac-cong-viec-it-va-lap-trinh?_route_params%5Bfilters%5D=cpath_cac-cong-viec-it-va-lap-trinh`;
 
 export const route: Route = {
-    path: '/it',
+    path: '/:cpath',
     categories: ['other'],
-    example: '/vlance/it',
-    parameters: {},
+    example: '/vlance/cpath_ai-tri-tue-nhan-tao',
+    parameters: {
+        cpath: 'cpath trong URL danh mục vLance, ví dụ: cpath_ai-tri-tue-nhan-tao, cpath_cac-cong-viec-it-va-lap-trinh',
+    },
     features: {
         requireConfig: false,
         requirePuppeteer: false,
@@ -20,19 +21,18 @@ export const route: Route = {
         supportPodcast: false,
         supportScihub: false,
     },
-    radar: [
-        {
-            source: ['www.vlance.vn/tim-viec-lam-freelance'],
-            target: '/it',
-        },
-    ],
-    name: 'Công việc IT & Lập trình',
+    radar: [{ source: ['www.vlance.vn/viec-lam-freelance/:cpath'], target: '/:cpath' }],
+    name: 'Danh mục việc làm',
     maintainers: ['DIYgod'],
     handler,
-    url: 'www.vlance.vn/tim-viec-lam-freelance',
+    url: 'www.vlance.vn',
 };
 
-async function handler() {
+async function handler(ctx) {
+    const cpath = ctx.req.param('cpath');
+
+    const listUrl = `${baseUrl}/block/job_list/${cpath}?_route_params%5Bfilters%5D=${cpath}`;
+
     const response = await ofetch(listUrl, {
         headers: {
             'user-agent': config.trueUA,
@@ -81,8 +81,8 @@ async function handler() {
         .filter((entry) => entry !== undefined);
 
     return {
-        title: 'vLance - Công việc IT & Lập trình',
-        link: `${baseUrl}/tim-viec-lam-freelance`,
+        title: `vLance - ${cpath}`,
+        link: `${baseUrl}/viec-lam-freelance/${cpath}`,
         item,
     };
 }
