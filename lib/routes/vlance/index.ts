@@ -9,8 +9,8 @@ import ofetch from '@/utils/ofetch';
 // --- Constants ---
 
 const baseUrl = 'https://www.vlance.vn';
-const TARGET_ITEMS = 20;
-const PAGE_COUNT = 4;
+const DEFAULT_LIMIT = 20;
+const MAX_PAGES = 10;
 
 // --- Helpers ---
 
@@ -120,7 +120,7 @@ export const route: Route = {
     example: '/vlance/cpath_ai-tri-tue-nhan-tao',
     parameters: {
         cpath: {
-            description: 'cpath from vLance category URL. Extract from the category path, e.g. viec-lam-freelance/cpath_ai-tri-tue-nhan-tao → use cpath_ai-tri-tue-nhan-tao',
+            description: 'Category path from vLance URL. E.g. `viec-lam-freelance/cpath_ai-tri-tue-nhan-tao` → use `cpath_ai-tri-tue-nhan-tao`',
         },
     },
     features: {
@@ -140,15 +140,20 @@ export const route: Route = {
     handler,
     url: 'www.vlance.vn',
     description: `::: tip How to get cpath
-  Open a vLance job category page, copy the \`cpath_xxx\` part from the URL. Example: \`https://www.vlance.vn/viec-lam-freelance/cpath_ai-tri-tue-nhan-tao\` → cpath = \`cpath_ai-tri-tue-nhan-tao\`
+Open a vLance job category page, copy the \`cpath_xxx\` part from the URL.
+Example: \`https://www.vlance.vn/viec-lam-freelance/cpath_ai-tri-tue-nhan-tao\` → cpath = \`cpath_ai-tri-tue-nhan-tao\`
 :::
 
-| Category              | cpath |
-| --------------------- | ----- |
-| IT & Programming Jobs | cpath_cac-cong-viec-it-va-lap-trinh |
+| Category                   | cpath |
+| -------------------------- | ----- |
+| IT & Programming Jobs      | cpath_cac-cong-viec-it-va-lap-trinh |
 | AI Artificial Intelligence | cpath_ai-tri-tue-nhan-tao |
 
-Feed prioritizes 20 jobs still accepting bids, then fills with newest jobs (loads first 4 pages).`,
+::: tip Common Parameter
+There is an optional parameter \`limit\` which controls the number of items to fetch. Default: 20. See [limit parameter](https://docs.rsshub.app/guide/parameters#limit-entries) for details.
+:::
+
+Feed prioritizes jobs still accepting bids, then fills with newest jobs. Pages are fetched sequentially until the limit is reached or a page returns no data (max 10 pages).`,
 };
 
 async function handler(ctx: Context): Promise<Data> {
@@ -157,27 +162,25 @@ async function handler(ctx: Context): Promise<Data> {
         throw new InvalidParameterError('Missing cpath. Example: /vlance/cpath_ai-tri-tue-nhan-tao');
     }
 
-    // Page 1: {cpath}, Page 2–4: {cpath}_page_2, _page_3, _page_4 (no _page_1)
-    const filters = [cpath, ...Array.from({ length: PAGE_COUNT - 1 }, (_, i) => `${cpath}_page_${i + 2}`)];
+    const limitQuery = ctx.req.query('limit');
+    const limit = limitQuery ? Number.parseInt(limitQuery, 10) : DEFAULT_LIMIT;
 
-    // Fetch all 4 pages in parallel
-    const responses = await Promise.all(
-        filters.map((filter) =>
-            ofetch(buildListUrl(filter), {
-                headers: {
-                    'user-agent': config.trueUA,
-                    'x-requested-with': 'XMLHttpRequest',
-                },
-            })
-        )
-    );
-
-    // Dedupe by link and split: open (still accepting) first, then others
     const seen = new Set<string>();
     const openItems: Array<{ title: string; link: string; author: string; category: string[]; description?: string }> = [];
     const otherItems: Array<{ title: string; link: string; author: string; category: string[]; description?: string }> = [];
 
-    for (const html of responses) {
+    const fetchOptions = {
+        headers: {
+            'user-agent': config.trueUA,
+            'x-requested-with': 'XMLHttpRequest',
+        },
+    };
+
+    for (let page = 1; page <= MAX_PAGES; page++) {
+        const filter = page === 1 ? cpath : `${cpath}_page_${page}`;
+        // Sequential fetch is intentional: stop early when limit reached or page is empty
+        // eslint-disable-next-line no-await-in-loop
+        const html = await ofetch(buildListUrl(filter), fetchOptions);
         const $ = load(html);
         const parsed = parseCards($).filter((p): p is NonNullable<typeof p> => p !== null);
 
@@ -194,10 +197,16 @@ async function handler(ctx: Context): Promise<Data> {
                 otherItems.push(item);
             }
         }
+
+        if (openItems.length + otherItems.length >= limit) {
+            break;
+        }
+        if (parsed.length === 0) {
+            break;
+        }
     }
 
-    // Prioritize open items, fill up to TARGET_ITEMS with remaining (newest-first order preserved)
-    const item = [...openItems, ...otherItems].slice(0, TARGET_ITEMS);
+    const item = [...openItems, ...otherItems].slice(0, limit);
 
     return {
         title: `vLance - ${cpath}`,
