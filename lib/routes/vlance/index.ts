@@ -57,6 +57,19 @@ function parseDeadlineLabel(cardHtml: string): string | null {
     return `${d}.${m}.${y}`;
 }
 
+/**
+ * Parse bid count (số chào giá / ứng tuyển) from card HTML.
+ * Supports: "X chào giá" (job), "Đã ứng tuyển X / Y" (contest).
+ */
+function parseBidCount(cardHtml: string): number | null {
+    const match = cardHtml.match(/(\d+)\s*chào\s*giá/i) || cardHtml.match(/đã\s*ứng\s*tuyển\s*<b>\s*(\d+)/i) || cardHtml.match(/đã\s*ứng\s*tuyển\s*(\d+)/i);
+    if (!match?.[1]) {
+        return null;
+    }
+    const n = Number.parseInt(match[1], 10);
+    return Number.isNaN(n) ? null : n;
+}
+
 /** Build vLance job list API URL. Filter format: {cpath} for page 1, {cpath}_page_N for page N (N >= 2). */
 function buildListUrl(filter: string) {
     return `${baseUrl}/block/job_list/${filter}?_route_params%5Bfilters%5D=${filter}`;
@@ -85,6 +98,7 @@ function parseCards($: ReturnType<typeof load>) {
         const cardHtml = cardElement.html() ?? '';
         const hasOpenDeadline = cardHtml.includes('Hạn nhận hồ sơ:');
         const deadlineLabel = parseDeadlineLabel(cardHtml);
+        const bidCount = parseBidCount(cardHtml);
 
         const author = cardElement.find('.fr-title > a > span').first().text().trim();
         const listCategory = cardElement.find('.fr-summary-desktop .category').first().text().trim();
@@ -99,7 +113,10 @@ function parseCards($: ReturnType<typeof load>) {
         descriptionNode.find('.read_more').remove();
         const description = descriptionNode.html()?.trim();
 
-        const displayTitle = deadlineLabel ? `[${deadlineLabel}] ${title}` : title;
+        let displayTitle = deadlineLabel ? `[${deadlineLabel}] ${title}` : title;
+        if (bidCount !== null) {
+            displayTitle = `${displayTitle} (${bidCount} 📩)`;
+        }
 
         return {
             title: displayTitle,
@@ -153,7 +170,9 @@ Example: \`https://www.vlance.vn/viec-lam-freelance/cpath_ai-tri-tue-nhan-tao\` 
 There is an optional parameter \`limit\` which controls the number of items to fetch. Default: 20. See [limit parameter](https://docs.rsshub.app/guide/parameters#limit-entries) for details.
 :::
 
-Feed prioritizes jobs still accepting bids, then fills with newest jobs. Pages are fetched sequentially until the limit is reached or a page returns no data (max 10 pages).`,
+Feed prioritizes jobs still accepting bids, then fills with newest jobs. Pages are fetched sequentially until the limit is reached or a page returns no data (max 10 pages).
+
+**Item title format:** When available, the title includes a deadline prefix \`[DD.MM.YY]\` and the bid count with icon at the end, e.g. \`[01.04.25] Job title (5 📩)\`.`,
 };
 
 async function handler(ctx: Context): Promise<Data> {
