@@ -70,9 +70,12 @@ function parseBidCount(cardHtml: string): number | null {
     return Number.isNaN(n) ? null : n;
 }
 
-/** Build vLance job list API URL. Filter format: {cpath} for page 1, {cpath}_page_N for page N (N >= 2). */
-function buildListUrl(filter: string) {
-    return `${baseUrl}/block/job_list/${filter}?_route_params%5Bfilters%5D=${filter}`;
+type ListBlock = 'job_list' | 'job_list_fulltime';
+
+/** Build vLance block list URL. Filter: page 1 = {filter}, page N = {filter}_page_N (N >= 2). */
+function buildListUrl(block: ListBlock, filter: string) {
+    const encoded = encodeURIComponent(filter);
+    return `${baseUrl}/block/${block}/${filter}?_route_params%5Bfilters%5D=${encoded}`;
 }
 
 /**
@@ -131,13 +134,21 @@ function parseCards($: ReturnType<typeof load>) {
 
 // --- Route ---
 
+/** rss + Hono: ctx.req.path is the full pathname (e.g. /vlance/fulltime/...), not stripped to /fulltime/... */
+function listBlockFromPath(reqPath: string): ListBlock {
+    const segments = reqPath.split('/').filter(Boolean);
+    const isFulltime = segments[0] === 'fulltime' || segments[1] === 'fulltime';
+    return isFulltime ? 'job_list_fulltime' : 'job_list';
+}
+
 export const route: Route = {
-    path: '/:cpath',
+    path: ['/fulltime/:cpath', '/:cpath'],
     categories: ['other'],
     example: '/vlance/cpath_ai-tri-tue-nhan-tao',
     parameters: {
         cpath: {
-            description: 'Category path from vLance URL. E.g. `viec-lam-freelance/cpath_ai-tri-tue-nhan-tao` → use `cpath_ai-tri-tue-nhan-tao`',
+            description:
+                'Filter segment from vLance block URL (after `job_list/` or `job_list_fulltime/`). Examples: `cpath_cac-cong-viec-it-va-lap-trinh`, or with status suffix `cpath_..._status_nhan-ho-so`. For full-time lists use `/vlance/fulltime/...`.',
         },
     },
     features: {
@@ -156,7 +167,12 @@ export const route: Route = {
     maintainers: ['DIYgod'],
     handler,
     url: 'www.vlance.vn',
-    description: `::: tip How to get cpath
+    description: `::: tip Paths
+- **All jobs:** \`/vlance/:cpath\` → vLance block \`job_list\`.
+- **Full-time:** \`/vlance/fulltime/:cpath\` → block \`job_list_fulltime\`. Use the same filter string as in the site URL (e.g. \`cpath_..._status_nhan-ho-so\` if needed).
+:::
+
+::: tip How to get cpath
 Open a vLance job category page, copy the \`cpath_xxx\` part from the URL.
 Example: \`https://www.vlance.vn/viec-lam-freelance/cpath_ai-tri-tue-nhan-tao\` → cpath = \`cpath_ai-tri-tue-nhan-tao\`
 :::
@@ -178,9 +194,10 @@ Feed prioritizes jobs still accepting bids, then fills with newest jobs. Pages a
 async function handler(ctx: Context): Promise<Data> {
     const cpath = ctx.req.param('cpath');
     if (!cpath?.trim()) {
-        throw new InvalidParameterError('Missing cpath. Example: /vlance/cpath_ai-tri-tue-nhan-tao');
+        throw new InvalidParameterError('Missing cpath. Example: /vlance/cpath_ai-tri-tue-nhan-tao or /vlance/fulltime/cpath_..._status_nhan-ho-so');
     }
 
+    const block = listBlockFromPath(ctx.req.path);
     const limitQuery = ctx.req.query('limit');
     const limit = limitQuery ? Number.parseInt(limitQuery, 10) : DEFAULT_LIMIT;
 
@@ -199,7 +216,7 @@ async function handler(ctx: Context): Promise<Data> {
         const filter = page === 1 ? cpath : `${cpath}_page_${page}`;
         // Sequential fetch is intentional: stop early when limit reached or page is empty
         // eslint-disable-next-line no-await-in-loop
-        const html = await ofetch(buildListUrl(filter), fetchOptions);
+        const html = await ofetch(buildListUrl(block, filter), fetchOptions);
         const $ = load(html);
         const parsed = parseCards($).filter((p): p is NonNullable<typeof p> => p !== null);
 
@@ -227,8 +244,9 @@ async function handler(ctx: Context): Promise<Data> {
 
     const item = [...openItems, ...otherItems].slice(0, limit);
 
+    const feedTitleSuffix = block === 'job_list_fulltime' ? ' (full-time)' : '';
     return {
-        title: `vLance - ${cpath}`,
+        title: `vLance - ${cpath}${feedTitleSuffix}`,
         link: `${baseUrl}/viec-lam-freelance/${cpath}`,
         item,
     };
