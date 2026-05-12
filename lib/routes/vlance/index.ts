@@ -168,8 +168,10 @@ export const route: Route = {
     handler,
     url: 'www.vlance.vn',
     description: `::: tip Paths
+
 - **All jobs:** \`/vlance/:cpath\` → vLance block \`job_list\`.
 - **Full-time:** \`/vlance/fulltime/:cpath\` → block \`job_list_fulltime\`. Use the same filter string as in the site URL (e.g. \`cpath_..._status_nhan-ho-so\` if needed).
+
 :::
 
 ::: tip How to get cpath
@@ -177,10 +179,10 @@ Open a vLance job category page, copy the \`cpath_xxx\` part from the URL.
 Example: \`https://www.vlance.vn/viec-lam-freelance/cpath_ai-tri-tue-nhan-tao\` → cpath = \`cpath_ai-tri-tue-nhan-tao\`
 :::
 
-| Category                   | cpath |
-| -------------------------- | ----- |
-| IT & Programming Jobs      | cpath_cac-cong-viec-it-va-lap-trinh |
-| AI Artificial Intelligence | cpath_ai-tri-tue-nhan-tao |
+| Category                   | cpath                                |
+| -------------------------- | ------------------------------------ |
+| IT & Programming Jobs      | cpath\\_cac-cong-viec-it-va-lap-trinh |
+| AI Artificial Intelligence | cpath\\_ai-tri-tue-nhan-tao           |
 
 ::: tip Common Parameter
 There is an optional parameter \`limit\` which controls the number of items to fetch. Default: 20. See [limit parameter](https://docs.rsshub.app/guide/parameters#limit-entries) for details.
