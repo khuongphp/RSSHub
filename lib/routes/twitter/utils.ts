@@ -11,7 +11,8 @@ const getOriginalImg = (url) => {
             format = 'jpg';
         }
         return `${m[1]}?format=${format}&name=orig`;
-    } else if ((m = url.match(/^(https?:\/\/\w+\.twimg\.com\/.+)(\?.+)$/i))) {
+    }
+    if ((m = url.match(/^(https?:\/\/\w+\.twimg\.com\/[^?]+)(\?.+)$/i))) {
         const pars = getQueryParams(url);
         if (!pars.format || !pars.name) {
             return url;
@@ -20,9 +21,8 @@ const getOriginalImg = (url) => {
             return url;
         }
         return m[1] + '?format=' + pars.format + '&name=orig';
-    } else {
-        return url;
     }
+    return url;
 };
 const replaceBreak = (text) => text.replaceAll(/<br><br>|<br>/g, ' ');
 const quoteSeparator = "<hr style='border:0;border-top:1px solid #80808030;margin:12px 0;'>";
@@ -33,7 +33,7 @@ const formatText = (item) => {
     const urls = item.entities.urls || [];
     for (const url of urls) {
         // trim link pointing to the tweet itself (usually appears when the tweet is truncated)
-        text = text.replaceAll(url.url, url.expanded_url?.endsWith(id_str) ? '' : url.expanded_url);
+        text = text.replaceAll(url.url, () => (url.expanded_url?.endsWith(id_str) ? '' : url.expanded_url));
     }
     const media = item.extended_entities?.media || [];
     for (const m of media) {
@@ -66,6 +66,9 @@ const ProcessFeed = (ctx, { data = [] }, params = {}) => {
         sizeOfAuthorAvatar: fallback(params.sizeOfAuthorAvatar, queryToInteger(routeParams.get('sizeOfAuthorAvatar')), 48),
         sizeOfQuotedAuthorAvatar: fallback(params.sizeOfQuotedAuthorAvatar, queryToInteger(routeParams.get('sizeOfQuotedAuthorAvatar')), 24),
         mediaNumber: fallback(params.mediaNumber, queryToInteger(routeParams.get('mediaNumber')), false),
+        showEmojiForSubscriberOnly: fallback(params.showEmojiForSubscriberOnly, queryToBoolean(routeParams.get('showEmojiForSubscriberOnly')), false),
+        showSymbolForSubscriberOnly: fallback(params.showSymbolForSubscriberOnly, queryToBoolean(routeParams.get('showSymbolForSubscriberOnly')), true),
+        showFullPrefixForSubscriberOnly: fallback(params.showFullPrefixForSubscriberOnly, queryToBoolean(routeParams.get('showFullPrefixForSubscriberOnly')), false),
     };
 
     params = mergedParams;
@@ -85,6 +88,9 @@ const ProcessFeed = (ctx, { data = [] }, params = {}) => {
         showTimestampInDescription,
         showQuotedInTitle,
         mediaNumber,
+        showEmojiForSubscriberOnly,
+        showSymbolForSubscriberOnly,
+        showFullPrefixForSubscriberOnly,
         widthOfPics,
         heightOfPics,
         sizeOfAuthorAvatar,
@@ -198,9 +204,15 @@ const ProcessFeed = (ctx, { data = [] }, params = {}) => {
     };
 
     return data.map((item) => {
+        // Handle subscriber-only prefix based on user preference
+        if (item.full_text?.startsWith('[Subscribers Only]')) {
+            const text = item.full_text.replace('[Subscribers Only] ', '');
+            const prefix = showFullPrefixForSubscriberOnly ? '🔒 [Subscribers Only] ' : showEmojiForSubscriberOnly ? '🔒 ' : showSymbolForSubscriberOnly ? '[Subscribers Only] ' : '';
+            item.full_text = `${prefix}${text}`;
+        }
         const originalItem = item;
         item = item.retweeted_status || item;
-        item.full_text = item.full_text || item.text;
+        item.full_text ||= item.text;
         item.full_text = formatText(item);
         const img = formatMedia(item);
         let picsPrefix = generatePicsPrefix(item);
@@ -212,7 +224,7 @@ const ProcessFeed = (ctx, { data = [] }, params = {}) => {
             const quoteData = item.quoted_status;
 
             if (quoteData?.user) {
-                quoteData.full_text = quoteData.full_text || quoteData.text;
+                quoteData.full_text ||= quoteData.text;
                 const author = quoteData.user;
                 if (!readable) {
                     quote += quoteSeparator;
